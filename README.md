@@ -5,8 +5,8 @@ State-level **governance + outcomes** data for Reasonable Future–style argumen
 ## Evidence app (Streamlit)
 
 ```bash
-git clone <your-repo-url>
-cd governence-dashboard   # or your clone folder name
+git clone https://github.com/goldsteinmarcmd/governance-dashboard.git
+cd governance-dashboard
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dashboard.txt
