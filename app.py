@@ -22,6 +22,67 @@ HERE = Path(__file__).resolve().parent
 CSV_PATH = HERE / "governence_data_enriched_acs2022.csv"
 NATIONAL_TS_PATH = HERE / "us_national_timeseries.csv"
 
+# Source data filenames (hover tooltips on Full table column headers)
+ENRICHED_DATA_FILE = CSV_PATH.name
+SHEET_DATA_FILE = "governence_data - Sheet1.csv"
+VERA_DATA_FILE = "incarceration_trends_state.csv"
+
+# Columns still authored only in the editable sheet (not overwritten by refresh scripts)
+SHEET_ONLY_COLUMNS: frozenset[str] = frozenset(
+    {
+        "Governor",
+        "Party",
+        "State Senate Democrats",
+        "State Senate Republicans",
+        "State Senate Majority",
+        "State Senate Majority %",
+        "State House Democrats",
+        "State House Republicans",
+        "State House Majority",
+        "State House Majority %",
+        "Party Control",
+        "Sick Leave Policy",
+        "Number of Doctors per 100,000 resident population",
+        "Total Education Funding (in thousands)",
+        "Max AQI",
+        "90th Percentile AQI",
+        "Median AQI",
+        "% Good Days",
+        "% Moderate Days",
+        "% Unhealthy for Sensitive Groups Days",
+        "% Unhealthy Days",
+        "% Very Unhealthy Days",
+        "% Hazardous Days",
+    }
+)
+
+# Upstream data file (before merge into enriched CSV)
+UPSTREAM_DATA_FILE: dict[str, str] = {
+    "Incarcerated Total": VERA_DATA_FILE,
+    "Incarceration Rate": VERA_DATA_FILE,
+}
+
+SHEET_TO_INTERNAL: list[tuple[str, str]] = [
+    ("Median Income", "_median_income"),
+    ("Poverty Rate (%)", "_poverty_pct"),
+    ("Uninsured rate ACS (% of pop in B27001 universe)", "_uninsured_pct"),
+    ("Child poverty rate ACS (% under 18)", "_child_pov_pct"),
+    ("Rent burden 30%+ ACS (% renter HH)", "_rent30"),
+    ("Rent burden 50%+ ACS (% renter HH)", "_rent50"),
+    ("SNAP household rate ACS (% HH)", "_snap"),
+    ("Broadband household rate ACS (% HH)", "_broadband"),
+    ("No internet access ACS (% HH)", "_no_internet"),
+    ("Gini Coefficient 2019", "_gini"),
+    ("Life Expectancy 2019", "_le"),
+    ("Life Expectancy 2019 Male", "_le_m"),
+    ("Life Expectancy 2019 Female", "_le_f"),
+    ("Number of Doctors per 100,000 resident population", "_md_per_100k"),
+    ("Total Violent Crimes Occurred per 100,000", "_violent_per_100k"),
+    ("Incarceration Rate", "_incarceration_pct"),
+    ("Median AQI", "_median_aqi"),
+]
+INTERNAL_TO_SHEET: dict[str, str] = {dst: src for src, dst in SHEET_TO_INTERNAL}
+
 # --- Data citations (provenance) ---
 ACS_YEAR_LABEL = "2024"
 ACS_INTRO = (
@@ -293,26 +354,7 @@ def load() -> pd.DataFrame:
     df["state_name"] = df["State"].map(norm_state)
     df["STUSPS"] = df["state_name"].map(STUSPS)
 
-    pairs = [
-        ("Median Income", "_median_income"),
-        ("Poverty Rate (%)", "_poverty_pct"),
-        ("Uninsured rate ACS (% of pop in B27001 universe)", "_uninsured_pct"),
-        ("Child poverty rate ACS (% under 18)", "_child_pov_pct"),
-        ("Rent burden 30%+ ACS (% renter HH)", "_rent30"),
-        ("Rent burden 50%+ ACS (% renter HH)", "_rent50"),
-        ("SNAP household rate ACS (% HH)", "_snap"),
-        ("Broadband household rate ACS (% HH)", "_broadband"),
-        ("No internet access ACS (% HH)", "_no_internet"),
-        ("Gini Coefficient 2019", "_gini"),
-        ("Life Expectancy 2019", "_le"),
-        ("Life Expectancy 2019 Male", "_le_m"),
-        ("Life Expectancy 2019 Female", "_le_f"),
-        ("Number of Doctors per 100,000 resident population", "_md_per_100k"),
-        ("Total Violent Crimes Occurred per 100,000", "_violent_per_100k"),
-        ("Incarceration Rate", "_incarceration_pct"),
-        ("Median AQI", "_median_aqi"),
-    ]
-    for src, dst in pairs:
+    for src, dst in SHEET_TO_INTERNAL:
         if src in df.columns:
             df[dst] = to_float_series(df[src])
 
@@ -395,6 +437,35 @@ def cite_column(name: str) -> str:
 def citations_table_for_df(df: pd.DataFrame) -> pd.DataFrame:
     rows = [{"Column": c, "Citation / source": cite_column(c)} for c in sorted(df.columns)]
     return pd.DataFrame(rows)
+
+
+def column_source_filename(col: str) -> str:
+    """Primary source data filename shown on Full table column header hover."""
+    if col in UPSTREAM_DATA_FILE:
+        return UPSTREAM_DATA_FILE[col]
+    if col.startswith("_"):
+        sheet_col = INTERNAL_TO_SHEET.get(col)
+        if sheet_col:
+            return column_source_filename(sheet_col)
+        return ENRICHED_DATA_FILE
+    if col in ("state_name", "STUSPS", "State"):
+        return ENRICHED_DATA_FILE
+    if col in SHEET_ONLY_COLUMNS:
+        return SHEET_DATA_FILE
+    return ENRICHED_DATA_FILE
+
+
+def streamlit_column_config(df: pd.DataFrame) -> dict:
+    """Streamlit column_config with `help` = source filename for header tooltips."""
+    cfg: dict = {}
+    for col in df.columns:
+        help_text = f"Source data file: {column_source_filename(col)}"
+        series = df[col]
+        if pd.api.types.is_numeric_dtype(series):
+            cfg[col] = st.column_config.NumberColumn(col, help=help_text)
+        else:
+            cfg[col] = st.column_config.TextColumn(col, help=help_text)
+    return cfg
 
 
 def main() -> None:
@@ -759,7 +830,13 @@ def main() -> None:
         show = df
         if q.strip():
             show = df[df["state_name"].str.contains(q.strip(), case=False, na=False)]
-        st.dataframe(show, use_container_width=True, height=520)
+        st.caption("Hover a column header (ⓘ) to see the **source data filename** for that field.")
+        st.dataframe(
+            show,
+            use_container_width=True,
+            height=520,
+            column_config=streamlit_column_config(show),
+        )
         with st.expander("Column-by-column citations (all fields in table)", expanded=False):
             st.markdown(
                 "Provenance for **every** column in the filtered dataframe (including derived `_` fields used in charts)."
