@@ -1,0 +1,3 @@
+year,source,note,median_poverty_rate_pct,median_uninsured_rate_pct,median_child_poverty_pct
+2022,state_panel_median,Computed from governence_data_enriched_acs2022.csv,12.18,7.64,15.53
+2024,state_panel_median,Medians over 50 states from governence_data_enriched_acs2022.csv (ACS 2024 5-year refresh 2026-04-23),11.76,7.27,14.69

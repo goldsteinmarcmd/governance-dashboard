@@ -1,0 +1,24 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.Python
+
+# Secrets and local config (never commit)
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+*.pem
+*credentials*
+*secret*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Build / export artifacts (regenerate locally)
+RFRF_VISION_DECK.pdf
+RFRF_VISION_DECK.html
